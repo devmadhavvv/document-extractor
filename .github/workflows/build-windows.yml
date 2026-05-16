@@ -1,0 +1,123 @@
+name: Build Windows Installer
+
+on:
+    push:
+        tags:
+            - 'v*'
+        branches:
+            - main
+            - master
+            - stable
+            - github_action
+    workflow_dispatch:
+
+jobs:
+    build-windows:
+        name: Build Windows Installer
+        runs-on: windows-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
+                  cache: 'npm'
+
+            - name: Setup Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: '3.12'
+                  cache: 'pip'
+
+            - name: Install frontend dependencies & build
+              working-directory: ./frontend
+              run: |
+                  npm ci
+                  npm run build
+
+            - name: Create requirements.txt
+              working-directory: .
+              run: |
+                  echo "fastapi>=0.115.0" > requirements.txt
+                  echo "uvicorn[standard]>=0.34.0" >> requirements.txt
+                  echo "pydantic>=2.0.0" >> requirements.txt
+                  echo "pydantic-settings>=2.0.0" >> requirements.txt
+                  echo "python-multipart>=0.0.12" >> requirements.txt
+                  echo "firebase-admin>=6.0.0" >> requirements.txt
+                  echo "google-cloud-firestore>=2.0.0" >> requirements.txt
+                  echo "google-api-core>=2.0.0" >> requirements.txt
+                  echo "grpcio>=1.60.0" >> requirements.txt
+                  echo "openpyxl>=3.1.0" >> requirements.txt
+                  echo "aiofiles>=24.0.0" >> requirements.txt
+                  echo "httpx>=0.28.0" >> requirements.txt
+                  echo "pyOpenSSL>=24.0.0" >> requirements.txt
+                  echo "cachetools>=5.0.0" >> requirements.txt
+
+            - name: Setup Python virtual environment
+              run: |
+                  python -m venv venv
+                  .\venv\Scripts\python.exe -m pip install --upgrade pip --quiet
+                  .\venv\Scripts\pip.exe install -r requirements.txt
+                  .\venv\Scripts\pip.exe install pyinstaller
+
+            - name: Build Python executable
+              run: |
+                  if (Test-Path .env) { Remove-Item .env }
+                  # Write Firebase credentials to a temp file with the expected name
+                  $CREDS_DIR = "$env:RUNNER_TEMP\creds"
+                  New-Item -ItemType Directory -Force -Path $CREDS_DIR | Out-Null
+                  $CREDS_PATH = "$CREDS_DIR\service-account.json"
+                  Set-Content -Path $CREDS_PATH -Value '${{ secrets.FIREBASE_CREDENTIALS_JSON }}'
+                  .\venv\Scripts\pyinstaller.exe --onefile `
+                    --hidden-import uvicorn `
+                    --hidden-import uvicorn.loggers `
+                    --hidden-import uvicorn.loops `
+                    --hidden-import uvicorn.protocols `
+                    --hidden-import uvicorn.lifespan.on `
+                    --hidden-import firebase_admin `
+                    --hidden-import firebase_admin.firestore `
+                    --hidden-import google.cloud `
+                    --hidden-import google.cloud.firestore `
+                    --hidden-import google.api_core `
+                    --hidden-import google.api_core.grpc_helpers `
+                    --hidden-import grpc `
+                    --hidden-import grpc._cython.cygrpc `
+                    --hidden-import grpc._auth `
+                    --hidden-import google.auth `
+                    --hidden-import google.oauth2 `
+                    --hidden-import cachetools `
+                    --collect-all app `
+                    --add-data "$CREDS_PATH;." `
+                    --distpath dist\backend `
+                    --name onboarding-api `
+                    run.py
+                  if (-not (Test-Path dist\backend\onboarding-api.exe)) {
+                    Write-Host "Error: onboarding-api.exe was not created"
+                    exit 1
+                  }
+
+            - name: Install Electron dependencies
+              working-directory: ./electron
+              run: npm ci
+
+            - name: Create .env for runtime bundling
+              run: |
+                  echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
+                  echo "FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}" >> .env
+
+            - name: Build Windows installer
+              working-directory: ./electron
+              run: npm run dist -- --win
+              env:
+                  CI: false
+
+            - name: Upload Windows installer
+              uses: actions/upload-artifact@v4
+              with:
+                  name: windows-installer
+                  path: |
+                      electron/release/Onboarding HRMS Setup *.exe
+                  retention-days: 30
