@@ -4,10 +4,17 @@ import sys
 
 if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
     creds = os.environ.get("FIREBASE_CREDENTIALS_PATH", "")
+    meipass = sys._MEIPASS
     if creds:
-        bundled = os.path.join(sys._MEIPASS, os.path.basename(creds))
+        bundled = os.path.join(meipass, os.path.basename(creds))
         if os.path.exists(bundled):
             os.environ["FIREBASE_CREDENTIALS_PATH"] = bundled
+        else:
+            # Log to stderr so the Electron error screen captures it
+            print(f"ERROR: Bundled credential not found at {bundled}", file=sys.stderr)
+            print(f"  MEIPASS contents: {os.listdir(meipass)}", file=sys.stderr)
+    else:
+        print("WARNING: FIREBASE_CREDENTIALS_PATH not set", file=sys.stderr)
 
 import uvicorn
 from app.main import app

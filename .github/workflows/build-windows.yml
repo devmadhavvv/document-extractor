@@ -70,7 +70,15 @@ jobs:
                   $CREDS_DIR = "$env:RUNNER_TEMP\creds"
                   New-Item -ItemType Directory -Force -Path $CREDS_DIR | Out-Null
                   $CREDS_PATH = "$CREDS_DIR\service-account.json"
-                  Set-Content -Path $CREDS_PATH -Value '${{ secrets.FIREBASE_CREDENTIALS_JSON }}'
+                  # Use .NET to write UTF-8 without BOM (PowerShell Set-Content adds BOM, breaking JSON)
+                  $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+                  [System.IO.File]::WriteAllText($CREDS_PATH, '${{ secrets.FIREBASE_CREDENTIALS_JSON }}', $Utf8NoBom)
+                  if (-not (Test-Path $CREDS_PATH)) {
+                    Write-Host "Error: failed to write credentials to $CREDS_PATH"
+                    exit 1
+                  }
+                  $credsSize = (Get-Item $CREDS_PATH).Length
+                  Write-Host "Credentials file written: $CREDS_PATH ($credsSize bytes)"
                   .\venv\Scripts\pyinstaller.exe --onefile `
                     --hidden-import uvicorn `
                     --hidden-import uvicorn.loggers `
