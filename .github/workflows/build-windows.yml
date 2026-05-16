@@ -31,6 +31,17 @@ jobs:
                   python-version: '3.12'
                   cache: 'pip'
 
+            - name: Debug Firebase secret
+              shell: pwsh
+              run: |
+                  $secret = "${{ secrets.FIREBASE_CREDENTIALS_JSON }}"
+
+                  Write-Host "Secret length:"
+                  Write-Host $secret.Length
+
+                  Write-Host "First 100 chars:"
+                  Write-Host $secret.Substring(0, [Math]::Min(100, $secret.Length))
+
             - name: Install frontend dependencies & build
               working-directory: ./frontend
               run: |
