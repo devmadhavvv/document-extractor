@@ -64,20 +64,50 @@ jobs:
                   .\venv\Scripts\pip.exe install pyinstaller
 
             - name: Build Python executable
+              shell: pwsh
               run: |
-                  if (Test-Path .env) { Remove-Item .env }
-                  # Decode base64 service-account JSON and write as raw bytes (no BOM)
-                  $bytes = [System.Convert]::FromBase64String('${{ secrets.FIREBASE_CREDENTIALS_JSON }}')
-                  [System.IO.File]::WriteAllBytes("service-account.json", $bytes)
-                  if (-not (Test-Path service-account.json)) {
-                    Write-Host "Error: failed to write service-account.json"
+                  if (Test-Path .env) {
+                    Remove-Item .env
+                  }
+
+                  $base64 = "${{ secrets.FIREBASE_CREDENTIALS_JSON }}"
+
+                  if ([string]::IsNullOrWhiteSpace($base64)) {
+                    Write-Host "ERROR: FIREBASE_CREDENTIALS_JSON is empty"
                     exit 1
                   }
+
+                  $bytes = [System.Convert]::FromBase64String($base64)
+
+                  [System.IO.File]::WriteAllBytes(
+                    "service-account.json",
+                    $bytes
+                  )
+
+                  if (-not (Test-Path service-account.json)) {
+                    Write-Host "ERROR: service-account.json not created"
+                    exit 1
+                  }
+
                   $credsSize = (Get-Item service-account.json).Length
+
                   Write-Host "service-account.json written ($credsSize bytes)"
-                  # Log first 100 chars to verify JSON structure
-                  $sample = [System.IO.File]::ReadAllText("service-account.json").Substring(0, [Math]::Min(100, $credsSize))
-                  Write-Host "service-account.json preview: $sample"
+
+                  if ($credsSize -eq 0) {
+                    Write-Host "ERROR: service-account.json is empty"
+                    exit 1
+                  }
+
+                  $sample = [System.IO.File]::ReadAllText(
+                    "service-account.json"
+                  )
+
+                  Write-Host "Preview:"
+                  Write-Host $sample.Substring(
+                    0,
+                    [Math]::Min(100, $sample.Length)
+                  )
+
                   .\venv\Scripts\pyinstaller.exe --onefile `
                     --hidden-import uvicorn `
                     --hidden-import uvicorn.loggers `
@@ -102,11 +132,11 @@ jobs:
                     --distpath dist\backend `
                     --name onboarding-api `
                     run.py
+
                   if (-not (Test-Path dist\backend\onboarding-api.exe)) {
-                    Write-Host "Error: onboarding-api.exe was not created"
+                    Write-Host "ERROR: onboarding-api.exe not created"
                     exit 1
                   }
-
             - name: Install Electron dependencies
               working-directory: ./electron
               run: npm ci
