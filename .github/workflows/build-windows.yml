@@ -67,7 +67,7 @@ jobs:
               run: |
                   if (Test-Path .env) { Remove-Item .env }
                   # Decode base64 service-account JSON and write as raw bytes (no BOM)
-                  $bytes = [System.Convert]::FromBase64String('${{ secrets.FIREBASE_CREDENTIALS_JSON_BASE64 }}')
+                  $bytes = [System.Convert]::FromBase64String('${{ secrets.FIREBASE_CREDENTIALS_JSON }}')
                   [System.IO.File]::WriteAllBytes("service-account.json", $bytes)
                   if (-not (Test-Path service-account.json)) {
                     Write-Host "Error: failed to write service-account.json"
