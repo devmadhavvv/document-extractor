@@ -54,6 +54,7 @@ jobs:
                   echo "httpx>=0.28.0" >> requirements.txt
                   echo "pyOpenSSL>=24.0.0" >> requirements.txt
                   echo "cachetools>=5.0.0" >> requirements.txt
+                  echo "pdf2image>=1.17.0" >> requirements.txt
 
             - name: Setup Python virtual environment
               run: |
@@ -88,6 +89,7 @@ jobs:
                     --hidden-import google.auth `
                     --hidden-import google.oauth2 `
                     --hidden-import cachetools `
+                    --hidden-import pdf2image `
                     --collect-all app `
                     --add-data "$CREDS_PATH;." `
                     --distpath dist\backend `

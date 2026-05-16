@@ -22,10 +22,10 @@ google-cloud-firestore>=2.0.0
 google-api-core>=2.0.0
 grpcio>=1.60.0
 openpyxl>=3.1.0
-aiofiles>=24.0.0
 httpx>=0.28.0
 pyOpenSSL>=24.0.0
 cachetools>=5.0.0
+pdf2image>=1.17.0
 REQEOF
 
 # Check for Firebase key
@@ -57,6 +57,7 @@ PYINSTALLER_ARGS="--onefile \
   --hidden-import google.auth \
   --hidden-import google.oauth2 \
   --hidden-import cachetools \
+  --hidden-import pdf2image \
   --collect-all app \
   $ADD_DATA \
   --distpath dist/backend \
