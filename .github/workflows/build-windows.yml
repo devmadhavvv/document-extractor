@@ -113,7 +113,7 @@ jobs:
                   echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
                   echo "FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}" >> .env
 
-            - name: Build Windows portable
+            - name: Build Windows installer
               working-directory: ./electron
               run: npm run dist -- --win
               env:
@@ -123,9 +123,13 @@ jobs:
               run: Remove-Item service-account.json -ErrorAction SilentlyContinue
 
             - name: Upload Windows installer
+              run: |
+                  Compress-Archive -Path electron/release/* -DestinationPath release.zip
+              shell: pwsh
+
+            - name: Upload artifact
               uses: actions/upload-artifact@v4
               with:
                   name: windows-installer
-                  path: |
-                      electron/release/Onboarding HRMS *Portable.exe
+                  path: release.zip
                   retention-days: 30

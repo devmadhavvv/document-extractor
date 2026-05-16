@@ -79,4 +79,4 @@ cd "$ROOT_DIR"
 
 echo ""
 echo "=== Done ==="
-echo "macOS ZIP: electron/release/Onboarding HRMS-1.0.0-mac.zip"
+echo "macOS DMG: electron/release/Onboarding HRMS-1.0.0.dmg"
