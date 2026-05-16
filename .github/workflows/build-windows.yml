@@ -75,6 +75,9 @@ jobs:
                   }
                   $credsSize = (Get-Item service-account.json).Length
                   Write-Host "service-account.json written ($credsSize bytes)"
+                  # Log first 100 chars to verify JSON structure
+                  $sample = [System.IO.File]::ReadAllText("service-account.json").Substring(0, [Math]::Min(100, $credsSize))
+                  Write-Host "service-account.json preview: $sample"
                   .\venv\Scripts\pyinstaller.exe --onefile `
                     --hidden-import uvicorn `
                     --hidden-import uvicorn.loggers `
