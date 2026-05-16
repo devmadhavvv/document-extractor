@@ -34,7 +34,7 @@
       }
     ],
     "mac": {
-      "target": "dmg",
+      "target": "zip",
       "icon": null,
       "hardenedRuntime": false,
       "extendInfo": {
@@ -48,7 +48,7 @@
       ]
     },
     "win": {
-      "target": "nsis",
+      "target": "portable",
       "extraResources": [
         {
           "from": "../dist/backend/onboarding-api.exe",

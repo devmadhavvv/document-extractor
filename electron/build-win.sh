@@ -91,4 +91,4 @@ rm -f requirements.txt
 
 echo ""
 echo "=== Done ==="
-echo "Windows installer: electron/release/Onboarding HRMS Setup 1.0.0.exe"
+echo "Windows portable: electron/release/Onboarding HRMS 1.0.0 Portable.exe"

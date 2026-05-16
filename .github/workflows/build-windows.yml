@@ -66,19 +66,15 @@ jobs:
             - name: Build Python executable
               run: |
                   if (Test-Path .env) { Remove-Item .env }
-                  # Write Firebase credentials to a temp file with the expected name
-                  $CREDS_DIR = "$env:RUNNER_TEMP\creds"
-                  New-Item -ItemType Directory -Force -Path $CREDS_DIR | Out-Null
-                  $CREDS_PATH = "$CREDS_DIR\service-account.json"
-                  # Use .NET to write UTF-8 without BOM (PowerShell Set-Content adds BOM, breaking JSON)
-                  $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
-                  [System.IO.File]::WriteAllText($CREDS_PATH, '${{ secrets.FIREBASE_CREDENTIALS_JSON }}', $Utf8NoBom)
-                  if (-not (Test-Path $CREDS_PATH)) {
-                    Write-Host "Error: failed to write credentials to $CREDS_PATH"
+                  # Decode base64 service-account JSON and write as raw bytes (no BOM)
+                  $bytes = [System.Convert]::FromBase64String('${{ secrets.FIREBASE_CREDENTIALS_JSON_BASE64 }}')
+                  [System.IO.File]::WriteAllBytes("service-account.json", $bytes)
+                  if (-not (Test-Path service-account.json)) {
+                    Write-Host "Error: failed to write service-account.json"
                     exit 1
                   }
-                  $credsSize = (Get-Item $CREDS_PATH).Length
-                  Write-Host "Credentials file written: $CREDS_PATH ($credsSize bytes)"
+                  $credsSize = (Get-Item service-account.json).Length
+                  Write-Host "service-account.json written ($credsSize bytes)"
                   .\venv\Scripts\pyinstaller.exe --onefile `
                     --hidden-import uvicorn `
                     --hidden-import uvicorn.loggers `
@@ -99,7 +95,7 @@ jobs:
                     --hidden-import cachetools `
                     --hidden-import pdf2image `
                     --collect-all app `
-                    --add-data "$CREDS_PATH;." `
+                    --add-data "service-account.json;." `
                     --distpath dist\backend `
                     --name onboarding-api `
                     run.py
@@ -117,16 +113,19 @@ jobs:
                   echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" > .env
                   echo "FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }}" >> .env
 
-            - name: Build Windows installer
+            - name: Build Windows portable
               working-directory: ./electron
               run: npm run dist -- --win
               env:
                   CI: false
+
+            - name: Clean up credentials
+              run: Remove-Item service-account.json -ErrorAction SilentlyContinue
 
             - name: Upload Windows installer
               uses: actions/upload-artifact@v4
               with:
                   name: windows-installer
                   path: |
-                      electron/release/Onboarding HRMS Setup *.exe
+                      electron/release/Onboarding HRMS *Portable.exe
                   retention-days: 30
