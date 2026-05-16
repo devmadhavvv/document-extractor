@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: onboarding-hrms
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: CORS_ORIGINS
+        value: https://your-frontend.vercel.app
+      - key: UPLOAD_TEMP_DIR
+        value: /tmp/onboarding-uploads
+      - key: CLEANUP_MAX_AGE_HOURS
+        value: "1"
+      - key: CLEANUP_INTERVAL_SECONDS
+        value: "1800"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CREDENTIALS_PATH
+        value: /etc/secrets/firebase-credentials.json
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: MAX_UPLOAD_SIZE_BYTES
+        value: "10485760"

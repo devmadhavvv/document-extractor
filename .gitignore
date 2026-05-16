@@ -1,0 +1,24 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+temp/
+
+# Local Firebase service account files
+*service-account*.json
+firebase-credentials*.json
+
+node_modules/
+dist/
+
+.aw_docs/
+.claude/
+.cursor/
+
+
+build/
+.aw
+release/

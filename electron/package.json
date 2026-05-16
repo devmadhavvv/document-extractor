@@ -1,0 +1,69 @@
+{
+  "name": "onboarding-hrms",
+  "version": "1.0.0",
+  "description": "Onboarding Document Management Desktop App",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "dist": "electron-builder --publish never"
+  },
+  "devDependencies": {
+    "electron": "^34.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.onboarding.hrms",
+    "productName": "Onboarding HRMS",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/dist",
+        "to": "frontend/dist",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../.env",
+        "to": ".env"
+      }
+    ],
+    "mac": {
+      "target": "dmg",
+      "icon": null,
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSSupportsAutomaticGraphicsSwitching": true
+      },
+      "extraResources": [
+        {
+          "from": "../dist/backend/onboarding-api",
+          "to": "backend/onboarding-api"
+        }
+      ]
+    },
+    "win": {
+      "target": "nsis",
+      "extraResources": [
+        {
+          "from": "../dist/backend/onboarding-api.exe",
+          "to": "backend/onboarding-api.exe"
+        }
+      ]
+    },
+    "linux": {
+      "target": "AppImage",
+      "extraResources": [
+        {
+          "from": "../dist/backend/onboarding-api",
+          "to": "backend/onboarding-api"
+        }
+      ]
+    }
+  }
+}
