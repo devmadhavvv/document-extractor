@@ -17,10 +17,31 @@
 
     <template v-else-if="batch">
       <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h2 class="text-xl font-semibold text-gray-900">
-            Batch {{ batch.batch_id.slice(0, 16) }}...
-          </h2>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center gap-2">
+            <input
+              v-if="editingName"
+              ref="nameInputRef"
+              v-model="batchName"
+              class="rounded-lg border border-gray-300 px-3 py-1.5 text-lg font-semibold text-gray-900 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400"
+              placeholder="Batch name..."
+              @blur="saveBatchName"
+              @keyup.enter="saveBatchName"
+              @keyup.escape="cancelEditName"
+            />
+            <h2 v-else class="truncate text-xl font-semibold text-gray-900">
+              {{ batch.name || `Batch ${batch.batch_id.slice(0, 16)}...` }}
+            </h2>
+            <button
+              type="button"
+              class="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              :title="editingName ? 'Save' : 'Edit batch name'"
+              @click="editingName ? saveBatchName() : startEditName()"
+            >
+              <svg v-if="editingName" class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+              <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+            </button>
+          </div>
           <p class="mt-0.5 text-sm text-gray-500">
             Created {{ formatDate(batch.created_at) }}
           </p>
@@ -32,6 +53,14 @@
           <span v-if="isProcessing(batch.status)" class="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
           {{ batch.status }}
         </span>
+        <button
+          type="button"
+          class="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+          @click="showDeleteBatchModal = true"
+        >
+          <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+          Delete Batch
+        </button>
       </div>
 
       <div class="mb-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -98,11 +127,25 @@
       </div>
 
       <div class="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        <div class="flex items-center justify-between border-b border-gray-100 bg-gray-50/50 px-6 py-3">
+          <span class="text-xs font-medium uppercase tracking-wider text-gray-500">Documents</span>
+          <button
+            type="button"
+            class="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+            :disabled="!batch.documents?.length || deletingAll"
+            @click="showDeleteAllModal = true"
+          >
+            <svg v-if="deletingAll" class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+            <svg v-else class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            {{ deletingAll ? 'Deleting...' : 'Delete All' }}
+          </button>
+        </div>
         <table class="min-w-full divide-y divide-gray-200">
           <thead class="bg-gray-50">
             <tr>
               <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">File</th>
               <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
+              <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Verified</th>
               <th class="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">Action</th>
             </tr>
           </thead>
@@ -120,6 +163,23 @@
                   <span v-if="isProcessing(doc.status)" class="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
                   {{ statusLabel(doc.status) }}
                 </span>
+              </td>
+              <td class="whitespace-nowrap px-6 py-4">
+                <span
+                  v-if="doc.approved"
+                  class="inline-flex items-center gap-1 rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-700"
+                >
+                  <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                  Approved
+                </span>
+                <span
+                  v-else-if="doc.status === 'SUCCESS'"
+                  class="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700"
+                >
+                  <svg class="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  Review Required
+                </span>
+                <span v-else class="text-xs text-gray-400">—</span>
               </td>
               <td class="whitespace-nowrap px-6 py-4 text-right">
                 <div class="flex items-center justify-end gap-2">
@@ -139,6 +199,16 @@
                   >
                     Review
                   </router-link>
+                  <button
+                    type="button"
+                    :disabled="deletingDocs[doc.document_id]"
+                    class="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                    :title="'Delete ' + doc.filename"
+                    @click="deleteSingleDocument(doc.document_id)"
+                  >
+                    <svg v-if="deletingDocs[doc.document_id]" class="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                    <svg v-else class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
                 </div>
               </td>
             </tr>
@@ -146,52 +216,42 @@
         </table>
       </div>
 
-      <div class="mt-6 rounded-xl border border-dashed border-gray-300 bg-white p-5 shadow-sm">
-        <div class="flex flex-wrap items-center justify-between gap-4">
-          <div class="flex items-center gap-3">
-            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50">
-              <svg class="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
-            </div>
-            <div>
-              <p class="text-sm font-medium text-gray-900">Add More Documents</p>
-              <p class="text-xs text-gray-500">Upload additional PDFs to this batch</p>
-            </div>
+      <div class="mt-6 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+        <div class="mb-4 flex items-center gap-3">
+          <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-green-50">
+            <svg class="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
           </div>
-          <div class="flex items-center gap-3">
-            <span v-if="addFiles.length > 0" class="text-sm text-gray-600">{{ addFiles.length }} file{{ addFiles.length === 1 ? '' : 's' }} selected</span>
-            <button
-              type="button"
-              class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-              @click="triggerFilePicker"
-            >
-              Choose Files
-            </button>
-            <button
-              v-if="addFiles.length > 0"
-              type="button"
-              :disabled="addingFiles"
-              class="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-60"
-              @click="uploadToBatch"
-            >
-              <svg v-if="addingFiles" class="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
-              {{ addingFiles ? 'Uploading...' : 'Upload' }}
-            </button>
-            <button
-              v-if="addFiles.length > 0"
-              type="button"
-              :disabled="addingFiles"
-              class="text-sm text-gray-500 hover:text-gray-700 disabled:opacity-50"
-              @click="clearAddFiles"
-            >
-              Clear
-            </button>
+          <div>
+            <p class="text-sm font-medium text-gray-900">Add More Documents</p>
+            <p class="text-xs text-gray-500">Drag & drop PDFs or click to browse</p>
           </div>
         </div>
-        <div v-if="addFiles.length > 0" class="mt-3 space-y-1">
-          <div v-for="(f, i) in addFiles" :key="i" class="flex items-center justify-between rounded bg-gray-50 px-3 py-1.5 text-sm">
-            <span class="truncate text-gray-700">{{ f.name }}</span>
-            <span class="ml-2 shrink-0 text-xs text-gray-400">{{ (f.size / 1024).toFixed(1) }} KB</span>
-          </div>
+        <div
+          class="relative flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed p-8 transition-colors"
+          :class="[
+            addingFiles ? 'border-indigo-300 bg-indigo-50' :
+            addDragOver ? 'border-indigo-400 bg-indigo-50' : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+          ]"
+          @dragenter.prevent="addDragOver = true"
+          @dragover.prevent="addDragOver = true"
+          @dragleave.prevent="addDragOver = false"
+          @drop.prevent="onAddDrop"
+          @click="triggerAddPicker"
+        >
+          <svg v-if="addingFiles" class="mb-2 h-8 w-8 animate-spin text-indigo-400" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+          <svg v-else class="mb-2 h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          <p v-if="addingFiles" class="text-sm text-indigo-600">Uploading...</p>
+          <p v-else class="text-sm text-gray-600">
+            <span class="text-indigo-600">Click to choose</span> or drop PDFs here
+          </p>
+          <input
+            ref="addFileInputRef"
+            type="file"
+            multiple
+            accept=".pdf,application/pdf"
+            class="hidden"
+            @change="onAddFilePick"
+          />
         </div>
         <div v-if="addFilesError" class="mt-3 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {{ addFilesError }}
@@ -199,31 +259,54 @@
         <div v-if="addFilesSuccess" class="mt-3 rounded border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
           {{ addFilesSuccess }}
         </div>
-        <input
-          ref="fileInputRef"
-          type="file"
-          multiple
-          accept=".pdf,application/pdf"
-          class="hidden"
-          @change="onAddFilesChange"
-        >
       </div>
 
       <div v-if="!batch.documents?.length" class="mt-6 rounded-xl border border-gray-200 bg-white p-8 text-center">
         <p class="text-sm text-gray-500">No documents in this batch.</p>
       </div>
+
+      <Teleport to="body">
+        <div v-if="showDeleteAllModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="showDeleteAllModal = false">
+          <div class="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h3 class="text-lg font-semibold text-gray-900">Delete All Documents?</h3>
+            <p class="mt-2 text-sm text-gray-600">This will permanently delete all {{ batch.documents?.length ?? 0 }} documents and their PDF files. This action cannot be undone.</p>
+            <div class="mt-6 flex justify-end gap-3">
+              <button type="button" class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" @click="showDeleteAllModal = false">Cancel</button>
+              <button type="button" :disabled="deletingAll" class="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60" @click="handleDeleteAll">
+                <svg v-if="deletingAll" class="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                {{ deletingAll ? 'Deleting...' : 'Delete All' }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="showDeleteBatchModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="showDeleteBatchModal = false">
+          <div class="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h3 class="text-lg font-semibold text-gray-900">Delete Entire Batch?</h3>
+            <p class="mt-2 text-sm text-gray-600">This will permanently delete this batch, all its documents, and their PDF files. This action cannot be undone.</p>
+            <div class="mt-6 flex justify-end gap-3">
+              <button type="button" class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" @click="showDeleteBatchModal = false">Cancel</button>
+              <button type="button" :disabled="deletingAll" class="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60" @click="handleDeleteBatch">
+                <svg v-if="deletingAll" class="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+                {{ deletingAll ? 'Deleting...' : 'Delete Batch' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Teleport>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
 import { API_BASE } from '@/config'
 import type { BatchDetail } from '@/stores/dashboard'
 
 const route = useRoute()
+const router = useRouter()
 
 const batch = ref<BatchDetail | null>(null)
 const initialLoading = ref(true)
@@ -234,11 +317,24 @@ const retryError = ref<string | null>(null)
 const downloading = ref(false)
 const downloadSuccess = ref(false)
 const downloadError = ref<string | null>(null)
-const addFiles = ref<File[]>([])
+
+// Add documents drag-drop (auto-upload)
+const addDragOver = ref(false)
 const addingFiles = ref(false)
 const addFilesError = ref<string | null>(null)
 const addFilesSuccess = ref<string | null>(null)
-const fileInputRef = ref<HTMLInputElement | null>(null)
+const addFileInputRef = ref<HTMLInputElement | null>(null)
+
+// Batch naming
+const editingName = ref(false)
+const batchName = ref('')
+const nameInputRef = ref<HTMLInputElement | null>(null)
+
+// Delete state
+const deletingDocs = ref<Record<string, boolean>>({})
+const deletingAll = ref(false)
+const showDeleteAllModal = ref(false)
+const showDeleteBatchModal = ref(false)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
@@ -341,39 +437,26 @@ async function retryDocument(documentId: string) {
   }
 }
 
-function triggerFilePicker() {
-  fileInputRef.value?.click()
+function triggerAddPicker() {
+  addFileInputRef.value?.click()
 }
 
-function onAddFilesChange(e: Event) {
-  const input = e.target as HTMLInputElement
-  if (input.files) {
-    const files = Array.from(input.files).filter(
-      (f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'),
-    )
-    addFiles.value = files
-    addFilesError.value = null
-    addFilesSuccess.value = null
-  }
-  input.value = ''
-}
-
-async function uploadToBatch() {
-  if (!addFiles.value.length || addingFiles.value) return
+async function uploadFiles(files: File[]) {
+  if (!files.length || addingFiles.value) return
   addingFiles.value = true
   addFilesError.value = null
   addFilesSuccess.value = null
 
   try {
     const form = new FormData()
-    for (const f of addFiles.value) {
+    for (const f of files) {
       form.append('files', f)
     }
     await axios.post(`${API_BASE}/batch/${route.params.id}/upload`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     })
-    addFilesSuccess.value = `${addFiles.value.length} file${addFiles.value.length === 1 ? '' : 's'} added successfully`
-    addFiles.value = []
+    const count = files.length
+    addFilesSuccess.value = `${count} file${count === 1 ? '' : 's'} added successfully`
     await fetchBatch()
     startPolling()
   } catch (err: any) {
@@ -383,10 +466,91 @@ async function uploadToBatch() {
   }
 }
 
-function clearAddFiles() {
-  addFiles.value = []
-  addFilesError.value = null
-  addFilesSuccess.value = null
+function onAddFilePick(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = input.files ? Array.from(input.files) : []
+  input.value = ''
+  if (files.length) {
+    uploadFiles(files)
+  }
+}
+
+function onAddDrop(e: DragEvent) {
+  addDragOver.value = false
+  const files = Array.from(e.dataTransfer?.files ?? []).filter(
+    (f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'),
+  )
+  if (files.length) {
+    uploadFiles(files)
+  }
+}
+
+async function deleteSingleDocument(documentId: string) {
+  deletingDocs.value[documentId] = true
+  try {
+    await axios.delete(`${API_BASE}/document/${documentId}`)
+    await fetchBatch()
+  } catch (err: any) {
+    const msg = err?.response?.data?.detail || 'Failed to delete document'
+    fetchError.value = msg
+  } finally {
+    deletingDocs.value[documentId] = false
+  }
+}
+
+async function handleDeleteAll() {
+  if (!batch.value) return
+  deletingAll.value = true
+  try {
+    await axios.delete(`${API_BASE}/batch/${batch.value.batch_id}/documents`)
+    showDeleteAllModal.value = false
+    await fetchBatch()
+  } catch (err: any) {
+    const msg = err?.response?.data?.detail || 'Failed to delete documents'
+    fetchError.value = msg
+    showDeleteAllModal.value = false
+  } finally {
+    deletingAll.value = false
+  }
+}
+
+async function handleDeleteBatch() {
+  if (!batch.value) return
+  deletingAll.value = true
+  try {
+    await axios.delete(`${API_BASE}/batch/${batch.value.batch_id}`)
+    showDeleteBatchModal.value = false
+    router.push('/')
+  } catch (err: any) {
+    const msg = err?.response?.data?.detail || 'Failed to delete batch'
+    fetchError.value = msg
+    showDeleteBatchModal.value = false
+  } finally {
+    deletingAll.value = false
+  }
+}
+
+function startEditName() {
+  batchName.value = batch.value?.name || ''
+  editingName.value = true
+  nextTick(() => nameInputRef.value?.focus())
+}
+
+async function saveBatchName() {
+  editingName.value = false
+  const name = batchName.value.trim()
+  if (!name || !batch.value) return
+  try {
+    await axios.patch(`${API_BASE}/batch/${batch.value.batch_id}/name`, { name })
+    if (batch.value) batch.value.name = name
+  } catch {
+    // non-blocking — name is optional
+  }
+}
+
+function cancelEditName() {
+  editingName.value = false
+  batchName.value = ''
 }
 
 async function handleDownload() {

@@ -4,6 +4,7 @@ import { API_BASE } from '@/config'
 
 export interface Batch {
   batch_id: string
+  name?: string | null
   status: string
   total_files: number
   completed_files: number
@@ -16,6 +17,7 @@ export interface BatchDocument {
   document_id: string
   filename: string
   status: string
+  approved: boolean
   error_message: string | null
 }
 

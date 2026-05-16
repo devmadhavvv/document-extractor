@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     cleanup_interval_seconds: int = 3600
     frontend_dist_dir: str | None = None
     gemini_api_key: str | None = None
-    gemini_model: str = "gemini-2.5-flash"
+    gemini_model: str = "gemini-3.1-flash-lite"
     gemini_request_timeout_seconds: float = 60.0
     gemini_max_retries: int = 3
 

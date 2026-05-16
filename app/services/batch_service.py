@@ -4,13 +4,18 @@ import asyncio
 import logging
 from collections import Counter
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from app.core.firebase import get_firestore_client
 from app.services.excel_generator import generate_onboarding_excel
-from app.services.firestore_service import get_document, update_document
+from app.services.firestore_service import (
+    delete_document,
+    get_document,
+    update_document,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +56,7 @@ async def list_batches() -> list[dict[str, Any]]:
 
         result.append({
             "batch_id": batch["batch_id"],
+            "name": batch.get("name"),
             "status": batch.get("status"),
             "total_files": int(batch.get("total_files", 0)),
             "completed_files": int(batch.get("completed_files", 0)),
@@ -79,6 +85,7 @@ async def get_batch_progress(batch_id: str) -> dict[str, Any]:
 
     return {
         "batch_id": batch.get("batch_id", batch_id),
+        "name": batch.get("name"),
         "status": batch.get("status"),
         "total_files": int(batch.get("total_files", 0)),
         "completed_files": int(batch.get("completed_files", 0)),
@@ -154,6 +161,57 @@ async def approve_all_documents(batch_id: str) -> dict[str, Any]:
     }
 
 
+async def delete_batch_documents(batch_id: str) -> list[str]:
+    """Delete all documents (Firestore records + PDF files) in a batch."""
+    if await get_document("batches", batch_id) is None:
+        raise BatchNotFoundError(f"Batch not found: {batch_id}")
+
+    try:
+        documents = await asyncio.to_thread(_list_batch_documents_sync, batch_id)
+    except Exception as exc:
+        raise BatchServiceError("Failed to list batch documents") from exc
+
+    deleted_ids: list[str] = []
+    for doc in documents:
+        doc_id = doc.get("document_id")
+        if not doc_id:
+            continue
+        pdf_path: str | None = doc.get("pdf_path")
+        if pdf_path:
+            pdf_file = Path(pdf_path)
+            if pdf_file.is_file():
+                try:
+                    pdf_file.unlink()
+                except OSError:
+                    pass
+        await delete_document("documents", doc_id)
+        deleted_ids.append(doc_id)
+
+    return deleted_ids
+
+
+async def delete_entire_batch(batch_id: str) -> None:
+    """Delete a batch record and all its documents."""
+    if await get_document("batches", batch_id) is None:
+        raise BatchNotFoundError(f"Batch not found: {batch_id}")
+
+    await delete_batch_documents(batch_id)
+
+    from app.services.firestore_service import delete_document as delete_firestore_doc
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    batch_dir = Path(settings.upload_temp_dir) / batch_id
+    if batch_dir.is_dir():
+        import shutil
+        try:
+            shutil.rmtree(batch_dir)
+        except OSError as exc:
+            logger.warning("Failed to remove batch dir %s: %s", batch_dir, exc)
+
+    await delete_firestore_doc("batches", batch_id)
+
+
 def _list_all_batches_sync() -> list[dict[str, Any]]:
     client = get_firestore_client()
     query = client.collection("batches").order_by("created_at", direction="DESCENDING")
@@ -164,6 +222,7 @@ def _list_all_batches_sync() -> list[dict[str, Any]]:
         data = snapshot.to_dict() or {}
         batches.append({
             "batch_id": data.get("batch_id", snapshot.id),
+            "name": data.get("name"),
             "status": data.get("status"),
             "total_files": int(data.get("total_files", 0)),
             "completed_files": int(data.get("completed_files", 0)),

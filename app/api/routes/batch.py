@@ -2,9 +2,11 @@
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from app.services.batch_service import (
     BatchApprovalError,
@@ -12,13 +14,19 @@ from app.services.batch_service import (
     BatchServiceError,
     _list_batch_documents_sync,
     approve_all_documents,
+    delete_batch_documents,
+    delete_entire_batch,
     get_batch_progress,
     list_batches,
 )
 from app.services.excel_export import ExcelExportError, export_approved_documents
-from app.services.firestore_service import update_document
+from app.services.firestore_service import get_document, update_document
 
 router = APIRouter()
+
+
+class BatchNameUpdate(BaseModel):
+    name: str
 
 
 @router.post("/batch/{batch_id}/upload", status_code=status.HTTP_201_CREATED)
@@ -143,4 +151,38 @@ async def download_batch_excel(batch_id: str) -> FileResponse:
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         filename=filename,
     )
+
+
+@router.patch("/batch/{batch_id}/name")
+async def update_batch_name(batch_id: str, payload: BatchNameUpdate) -> dict[str, object]:
+    """Update the display name for a batch."""
+    existing = await get_document("batches", batch_id)
+    if existing is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Batch not found: {batch_id}")
+    await update_document("batches", batch_id, {"name": payload.name})
+    return {"batch_id": batch_id, "name": payload.name}
+
+
+@router.delete("/batch/{batch_id}/documents")
+async def delete_all_batch_documents(batch_id: str) -> dict[str, object]:
+    """Delete all documents in a batch (Firestore records + PDF files)."""
+    try:
+        deleted_ids = await delete_batch_documents(batch_id)
+        return {"status": "deleted", "batch_id": batch_id, "deleted_count": len(deleted_ids)}
+    except BatchNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except BatchServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+
+@router.delete("/batch/{batch_id}")
+async def delete_batch_endpoint(batch_id: str) -> dict[str, object]:
+    """Delete an entire batch and all its documents."""
+    try:
+        await delete_entire_batch(batch_id)
+        return {"status": "deleted", "batch_id": batch_id}
+    except BatchNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except BatchServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 

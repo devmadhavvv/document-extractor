@@ -15,6 +15,17 @@ logger = logging.getLogger(__name__)
 
 JSONField = dict[str, Any]
 
+_active_gemini_model: str | None = None
+
+
+def get_active_model() -> str | None:
+    return _active_gemini_model
+
+
+def set_active_model(model: str) -> None:
+    global _active_gemini_model
+    _active_gemini_model = model
+
 FIELD_NAMES = (
     "employee_code",
     "candidate_name",
@@ -23,6 +34,7 @@ FIELD_NAMES = (
     "date_of_joining",
     "aadhaar_number",
     "pan_number",
+    "mobile_number",
     "gender",
     "marital_status",
     "address",
@@ -32,6 +44,7 @@ FIELD_NAMES = (
 
 PAN_REGEX = re.compile(r"^[A-Z]{5}[0-9]{4}[A-Z]$")
 AADHAAR_REGEX = re.compile(r"^[0-9]{12}$")
+MOBILE_REGEX = re.compile(r"^[0-9]{10}$")
 
 
 class GeminiExtractionError(RuntimeError):
@@ -105,11 +118,14 @@ async def _call_gemini_generate_content(
     page_image_paths: list[str],
     settings: Settings,
 ) -> str:
+    model_name = _active_gemini_model or settings.gemini_model
     api_url = (
         f"https://generativelanguage.googleapis.com/v1beta/models/"
-        f"{settings.gemini_model}:generateContent"
+        f"{model_name}:generateContent"
     )
-    parts: list[dict[str, Any]] = [{"text": _build_prompt()}]
+    logger.info("Using Gemini model: %s", model_name)
+    current_date = datetime.now().strftime("%B %Y")
+    parts: list[dict[str, Any]] = [{"text": _build_prompt(current_date)}]
     for image_path in page_image_paths:
         path = Path(image_path)
         if not path.exists():
@@ -164,7 +180,15 @@ async def _call_gemini_generate_content(
     return raw_text
 
 
-def _build_prompt() -> str:
+def _build_prompt(current_date: str | None = None) -> str:
+    doj_hint = (
+        f"The current date is approximately {current_date}. "
+        "date_of_joining month and year will likely match the current period; "
+        "extract the exact day from handwritten text in the document."
+    ) if current_date else (
+        "Extract handwritten date_of_joining carefully. "
+        "If month/year is illegible, assume it matches the document upload period."
+    )
     return (
         "Extract onboarding details from provided document images. "
         "Return STRICT JSON only, no markdown, no explanation. "
@@ -174,8 +198,10 @@ def _build_prompt() -> str:
         "Employee code must come from filename stem. "
         "candidate_name and father_name must be uppercase. "
         "date_of_birth and date_of_joining must be DD/MM/YYYY. "
-        "Extract handwritten date_of_joining carefully. "
+        f"{doj_hint} "
+        "Extract mobile_number as a 10-digit Indian phone number (handwritten on first page if present). "
         "Extract bank account_number and ifsc_code. "
+        "Infer gender from the candidate's name if not explicitly found in documents. "
         "Validate PAN format ABCDE1234F and Aadhaar as 12 digits. "
         "Every field must include value and confidence (0-100). "
         "Output keys must exactly match required schema."
@@ -233,6 +259,8 @@ def _normalize_output(raw: dict[str, Any], original_pdf_filename: str) -> dict[s
     result["date_of_joining"] = _normalize_date_field(result["date_of_joining"])
     result["pan_number"] = _normalize_pan_field(result["pan_number"])
     result["aadhaar_number"] = _normalize_aadhaar_field(result["aadhaar_number"])
+    result["mobile_number"] = _normalize_mobile_field(result["mobile_number"])
+    result["gender"] = _infer_gender_from_name(result["gender"], result["candidate_name"])
     result["ifsc_code"] = _uppercase_field(result["ifsc_code"])
 
     result["documents_found"] = _normalize_string_list(raw.get("documents_found"))
@@ -255,6 +283,7 @@ def _default_output() -> dict[str, Any]:
         "date_of_joining": {"value": None, "confidence": 0},
         "aadhaar_number": {"value": None, "confidence": 0},
         "pan_number": {"value": None, "confidence": 0},
+        "mobile_number": {"value": None, "confidence": 0},
         "gender": {"value": None, "confidence": 0},
         "marital_status": {"value": None, "confidence": 0},
         "address": {"value": None, "confidence": 0},
@@ -334,6 +363,53 @@ def _normalize_aadhaar_field(field: JSONField) -> JSONField:
         return field
     field["value"] = digits
     return field
+
+
+def _normalize_mobile_field(field: JSONField) -> JSONField:
+    if field["value"] is None:
+        return field
+    digits = re.sub(r"\D", "", str(field["value"]))
+    if not MOBILE_REGEX.match(digits):
+        field["value"] = None
+        field["confidence"] = 0
+        return field
+    field["value"] = digits
+    return field
+
+
+_INDIAN_FEMALE_NAMES = frozenset({
+    "ANITA", "ANJALI", "ANJU", "ANU", "ANUSHKA", "ARCHANA", "ARUNDHATI",
+    "ASHA", "BHAGYALAKSHMI", "BHAGYASHRI", "BHAVANA", "BHAVANI",
+    "CHHAYA", "DEEPTI", "DIVYA", "DURGA", "EKA",
+    "GAYATRI", "GEETA", "GITA", "HARSHITA", "HEMA", "HINA",
+    "INDU", "ISHA", "JYOTI", "JYOTSNA", "KALPANA", "KAMALA",
+    "KAVITA", "KHUSHBOO", "KOMAL", "LALITA", "LAXMI", "LEELA",
+    "MADHURI", "MADHU", "MALA", "MAMTA", "MANISHA", "MANJU",
+    "MEGHANA", "MINA", "MIRA", "NEELAM", "NEHA", "NILIMA",
+    "NIRMALA", "NISHA", "PADMA", "PALLAVI", "PARVATI", "PINKY",
+    "PRIYA", "PRIYANKA", "PURNIMA", "PUSHPALATA", "RADHA", "RAJNI",
+    "RAJESHWARI", "RAMA", "RANJANA", "RASHMI", "RATNA", "REKHA",
+    "RENU", "REVATI", "RITA", "ROHINI", "RUPALI", "SANDHYA",
+    "SANGITA", "SANJANA", "SARASWATI", "SARITA", "SAVITA", "SEEMA",
+    "SHANTI", "SHARMILA", "SHEELA", "SHOBHA", "SHWETA", "SITA",
+    "SONALI", "SONIA", "SUNANDA", "SUNITA", "SUSHILA", "SWATI",
+    "TARA", "TRIPTA", "UMA", "USHA", "VAISHALI", "VANDANA",
+    "VARSHA", "VEENA", "VIDYA", "VIJAYALAKSHMI",
+})
+
+
+def _infer_gender_from_name(gender_field: JSONField, name_field: JSONField) -> JSONField:
+    if gender_field["value"] and gender_field["confidence"] >= 60:
+        return gender_field
+    name = (name_field.get("value") or "").strip().upper()
+    if not name:
+        return gender_field
+    first_name = name.split()[0].strip()
+    if first_name in _INDIAN_FEMALE_NAMES:
+        return {"value": "FEMALE", "confidence": 70}
+    if first_name.endswith("A") and len(first_name) > 3:
+        return {"value": "FEMALE", "confidence": 60}
+    return {"value": "MALE", "confidence": 55}
 
 
 def _normalize_overall_confidence(value: Any, result: dict[str, Any]) -> int:

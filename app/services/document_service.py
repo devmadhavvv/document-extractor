@@ -1,9 +1,19 @@
 """Document details retrieval service."""
 
+import asyncio
+import logging
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
-from app.services.firestore_service import get_document, update_document
+from app.core.config import get_settings
+from app.services.firestore_service import (
+    delete_document,
+    get_document,
+    update_document,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentNotFoundError(ValueError):
@@ -83,6 +93,57 @@ async def update_document_verification(
     return _format_document_response(updated, document_id)
 
 
+async def delete_single_document(document_id: str) -> None:
+    """Delete a document record and its PDF file from disk."""
+    existing = await get_document("documents", document_id)
+    if existing is None:
+        raise DocumentNotFoundError(f"Document not found: {document_id}")
+
+    pdf_path: str | None = existing.get("pdf_path")
+    if pdf_path:
+        pdf_file = Path(pdf_path)
+        if pdf_file.is_file():
+            try:
+                pdf_file.unlink()
+            except OSError as exc:
+                logger.warning(
+                    "Failed to delete PDF file %s: %s", pdf_path, exc,
+                )
+
+    await delete_document("documents", document_id)
+
+    batch_id = existing.get("batch_id")
+    if batch_id:
+        try:
+            from app.services.firestore_service import get_document as get_batch
+
+            batch = await get_batch("batches", batch_id)
+            if batch:
+                total = int(batch.get("total_files", 0))
+                completed = int(batch.get("completed_files", 0))
+                failed = int(batch.get("failed_files", 0))
+                old_status = batch.get("status")
+                decrement = max(total - 1, 0)
+                new_completed = max(completed - 1, 0)
+                new_failed = max(failed - 1, 0)
+                await update_document("batches", batch_id, {
+                    "total_files": decrement,
+                    "completed_files": new_completed,
+                    "failed_files": new_failed,
+                })
+                if decrement == 0 and old_status in ("SUCCESS", "FAILED"):
+                    from datetime import UTC, datetime
+                    await update_document("batches", batch_id, {
+                        "status": "COMPLETED" if old_status == "SUCCESS" else "FAILED",
+                        "completed_files": 0,
+                        "failed_files": 0,
+                    })
+        except Exception as exc:
+            logger.warning(
+                "Failed to update batch counters after doc delete: %s", exc,
+            )
+
+
 async def retry_document(document_id: str) -> dict[str, Any]:
     """Reset a FAILED document to QUEUED and return processing info.
 
@@ -117,6 +178,15 @@ async def retry_document(document_id: str) -> dict[str, Any]:
             "updated_at": datetime.now(UTC).isoformat(),
         },
     )
+
+    batch = await get_document("batches", batch_id)
+    if batch:
+        current_failed = int(batch.get("failed_files", 0))
+        current_completed = int(batch.get("completed_files", 0))
+        await update_document("batches", batch_id, {
+            "failed_files": max(current_failed - 1, 0),
+            "status": "QUEUED",
+        })
 
     return {
         "document_id": document_id,

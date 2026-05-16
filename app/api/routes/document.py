@@ -13,6 +13,7 @@ from app.services.document_service import (
     DocumentNotFoundError,
     DocumentRetryMissingFieldsError,
     approve_document,
+    delete_single_document,
     get_document_details,
     retry_document,
     update_document_verification,
@@ -83,6 +84,16 @@ async def retry_document_endpoint(
     )
 
     return {"status": "QUEUED", "document_id": document_id, "batch_id": info["batch_id"]}
+
+
+@router.delete("/document/{document_id}")
+async def delete_document_endpoint(document_id: str) -> dict[str, object]:
+    """Delete a single document and its PDF file."""
+    try:
+        await delete_single_document(document_id)
+        return {"status": "deleted", "document_id": document_id}
+    except DocumentNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.get("/document/{document_id}/pdf")

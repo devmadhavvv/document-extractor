@@ -9,7 +9,37 @@
     </div>
 
     <div class="relative">
+      <textarea
+        v-if="fieldKey === 'address'"
+        :value="modelValue ?? extractedValue ?? ''"
+        :class="[
+          'w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none transition-colors',
+          validationClass,
+          disabled ? 'cursor-not-allowed bg-gray-50 text-gray-400' : '',
+        ]"
+        :disabled="disabled"
+        :placeholder="extractedValue || label"
+        rows="3"
+        @input="onInput"
+        @blur="onBlur"
+      />
+      <select
+        v-else-if="isDropdown"
+        :value="modelValue ?? extractedValue ?? ''"
+        :class="[
+          'w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none transition-colors',
+          validationClass,
+          disabled ? 'cursor-not-allowed bg-gray-50 text-gray-400' : '',
+        ]"
+        :disabled="disabled"
+        @change="onSelect"
+        @blur="onBlur"
+      >
+        <option value="" disabled>Select {{ label }}</option>
+        <option v-for="opt in dropdownOptions" :key="opt" :value="opt">{{ opt }}</option>
+      </select>
       <input
+        v-else
         :value="modelValue ?? extractedValue ?? ''"
         :class="[
           'w-full rounded-lg border bg-white px-3 py-2 text-sm outline-none transition-colors',
@@ -53,6 +83,11 @@ const emit = defineEmits<{
 const error = ref<string | null>(null)
 const touched = ref(false)
 
+const DROPDOWN_FIELDS: Record<string, string[]> = {
+  gender: ['MALE', 'FEMALE', 'OTHER'],
+  marital_status: ['MARRIED', 'UNMARRIED', 'WIDOWED'],
+}
+
 const VALIDATORS: Record<string, (val: string) => string | null> = {
   employee_code: (v) => v.length === 0 ? 'Required' : null,
   candidate_name: (v) => v.length === 0 ? 'Required' : null,
@@ -61,12 +96,16 @@ const VALIDATORS: Record<string, (val: string) => string | null> = {
   date_of_joining: validateDate,
   aadhaar_number: validateAadhaar,
   pan_number: validatePAN,
+  mobile_number: (v) => v.length > 0 && !/^\d{10}$/.test(v) ? 'Must be 10 digits' : null,
   gender: () => null,
   marital_status: () => null,
   address: () => null,
   bank_account_number: (v) => v.length > 0 && !/^\d+$/.test(v) ? 'Must be digits only' : null,
   ifsc_code: validateIFSC,
 }
+
+const isDropdown = computed(() => props.fieldKey in DROPDOWN_FIELDS)
+const dropdownOptions = computed(() => DROPDOWN_FIELDS[props.fieldKey] || [])
 
 const confidenceColorClass = computed(() => {
   if (props.confidence > 85) return 'bg-green-100 text-green-700'
@@ -123,13 +162,19 @@ function validateIFSC(val: string): string | null {
 }
 
 function onInput(e: Event) {
-  const raw = (e.target as HTMLInputElement).value
+  const raw = (e.target as HTMLInputElement | HTMLTextAreaElement).value
   const transformed = transform(raw)
   if (transformed !== raw) {
-    ;(e.target as HTMLInputElement).value = transformed
+    ;(e.target as HTMLInputElement | HTMLTextAreaElement).value = transformed
   }
   error.value = validate(transformed)
   emit('update:modelValue', transformed)
+}
+
+function onSelect(e: Event) {
+  const val = (e.target as HTMLSelectElement).value
+  error.value = validate(val)
+  emit('update:modelValue', val)
 }
 
 function onBlur() {

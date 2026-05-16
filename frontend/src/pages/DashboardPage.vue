@@ -56,7 +56,7 @@
         <table class="min-w-full divide-y divide-gray-200">
           <thead class="bg-gray-50">
             <tr>
-              <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Batch ID</th>
+              <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Batch</th>
               <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Status</th>
               <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Files</th>
               <th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">Created</th>
@@ -66,7 +66,8 @@
           <tbody class="divide-y divide-gray-200">
             <tr v-for="batch in store.recentBatches.slice(0, 10)" :key="batch.batch_id" class="hover:bg-gray-50">
               <td class="whitespace-nowrap px-6 py-4">
-                <span class="font-mono text-sm text-gray-900">{{ batch.batch_id.slice(0, 12) }}...</span>
+                <div class="text-sm text-gray-900">{{ batch.name || `Batch ${batch.batch_id.slice(0, 12)}...` }}</div>
+                <div v-if="batch.name" class="text-xs text-gray-400 font-mono">{{ batch.batch_id.slice(0, 12) }}...</div>
               </td>
               <td class="whitespace-nowrap px-6 py-4">
                 <span
@@ -83,27 +84,60 @@
                 {{ formatDate(batch.created_at) }}
               </td>
               <td class="whitespace-nowrap px-6 py-4 text-right">
-                <router-link
-                  :to="`/batch/${batch.batch_id}`"
-                  class="text-sm font-medium text-indigo-600 hover:text-indigo-500"
-                >
-                  View
-                </router-link>
+                <div class="flex items-center justify-end gap-2">
+                  <router-link
+                    :to="`/batch/${batch.batch_id}`"
+                    class="text-sm font-medium text-indigo-600 hover:text-indigo-500"
+                  >
+                    View
+                  </router-link>
+                  <button
+                    type="button"
+                    class="rounded-lg border border-red-200 p-1.5 text-red-500 hover:bg-red-50"
+                    :title="'Delete ' + (batch.name || batch.batch_id)"
+                    @click="confirmDelete = batch.batch_id"
+                  >
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div v-if="confirmDelete" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40" @click.self="confirmDelete = null">
+        <div class="mx-4 w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+          <h3 class="text-lg font-semibold text-gray-900">Delete Batch?</h3>
+          <p class="mt-2 text-sm text-gray-600">This will permanently delete this batch, all its documents, and their PDF files. This action cannot be undone.</p>
+          <div class="mt-6 flex justify-end gap-3">
+            <button type="button" class="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" @click="confirmDelete = null">Cancel</button>
+            <button type="button" :disabled="deleting" class="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60" @click="handleDeleteBatch">
+              <svg v-if="deleting" class="h-4 w-4 animate-spin" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+              {{ deleting ? 'Deleting...' : 'Delete Batch' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { h, onMounted } from 'vue'
+import { h, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import axios from 'axios'
 import DashboardCard from '@/components/DashboardCard.vue'
 import { useDashboardStore } from '@/stores/dashboard'
+import { API_BASE } from '@/config'
 
 const store = useDashboardStore()
+const router = useRouter()
+
+const confirmDelete = ref<string | null>(null)
+const deleting = ref(false)
 
 const LayersIcon = {
   render() {
@@ -158,6 +192,21 @@ function formatDate(dateStr: string | null) {
   if (!dateStr) return '-'
   const d = new Date(dateStr)
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+async function handleDeleteBatch() {
+  if (!confirmDelete.value) return
+  deleting.value = true
+  try {
+    await axios.delete(`${API_BASE}/batch/${confirmDelete.value}`)
+    confirmDelete.value = null
+    store.fetchBatches()
+  } catch (err: any) {
+    const msg = err?.response?.data?.detail || 'Failed to delete batch'
+    confirmDelete.value = null
+  } finally {
+    deleting.value = false
+  }
 }
 
 onMounted(() => {

@@ -5,6 +5,8 @@ import logging
 from collections.abc import Mapping
 from typing import TypeAlias
 
+from google.cloud.firestore_v1.base_query import FieldFilter
+
 from app.core.firebase import get_firestore_client
 
 logger = logging.getLogger(__name__)
@@ -80,6 +82,24 @@ async def get_document(collection_name: str, document_id: str) -> FirestoreData 
         raise FirestoreServiceError("Failed to get document") from exc
 
 
+async def delete_document(
+    collection_name: str,
+    document_id: str,
+) -> None:
+    """Delete a Firestore document by ID."""
+    validate_collection_name(collection_name)
+
+    try:
+        return await asyncio.to_thread(
+            _delete_document_sync,
+            collection_name,
+            document_id,
+        )
+    except Exception as exc:
+        logger.exception("Failed to delete document from Firestore")
+        raise FirestoreServiceError("Failed to delete document") from exc
+
+
 async def list_documents(
     collection_name: str,
     limit: int | None = None,
@@ -123,6 +143,31 @@ def _get_document_sync(collection_name: str, document_id: str) -> FirestoreData 
         return None
 
     return _snapshot_to_document(snapshot)
+
+
+def _delete_document_sync(
+    collection_name: str,
+    document_id: str,
+) -> None:
+    client = get_firestore_client()
+    client.collection(collection_name).document(document_id).delete()
+
+
+def _delete_documents_by_field_sync(
+    collection_name: str,
+    field_name: str,
+    field_value: str,
+) -> list[str]:
+    client = get_firestore_client()
+    query = client.collection(collection_name).where(
+        filter=FieldFilter(field_name, "==", field_value),
+    )
+    snapshots = query.stream()
+    deleted_ids: list[str] = []
+    for snapshot in snapshots:
+        snapshot.reference.delete()
+        deleted_ids.append(snapshot.id)
+    return deleted_ids
 
 
 def _list_documents_sync(

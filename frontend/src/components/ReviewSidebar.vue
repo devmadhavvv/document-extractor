@@ -87,6 +87,7 @@ const FIELD_LABELS: Record<string, string> = {
   date_of_joining: 'Date of Joining',
   aadhaar_number: 'Aadhaar Number',
   pan_number: 'PAN Number',
+  mobile_number: 'Mobile Number',
   gender: 'Gender',
   marital_status: 'Marital Status',
   address: 'Address',
@@ -221,12 +222,24 @@ async function handleSave() {
 async function handleApprove() {
   if (props.document.approved || approving.value || saving.value) return
 
-  if (hasUnsavedChanges.value) {
-    await handleSave()
-  }
-
   approving.value = true
   try {
+    if (hasUnsavedChanges.value) {
+      const payload: Record<string, { value: string; confidence: number }> = {}
+      const extracted = props.document.extracted_json ?? {}
+      for (const [key] of Object.entries(FIELD_LABELS)) {
+        if (formValues[key] !== undefined && formValues[key] !== '') {
+          const ext = extracted[key] as ExtractedField | undefined
+          payload[key] = {
+            value: formValues[key],
+            confidence: ext?.confidence ?? 100,
+          }
+        }
+      }
+      await axios.patch(`${API_BASE}/document/${props.document.document_id}`, {
+        verified_json: payload,
+      })
+    }
     await axios.post(`${API_BASE}/document/${props.document.document_id}/approve`)
     emit('approved')
   } catch (err: any) {

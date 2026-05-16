@@ -134,16 +134,16 @@ function navigateTo(docId: string | null) {
   router.push(`/document/${docId}`)
 }
 
-function onApproved() {
+async function onApproved() {
   if (!document.value) return
   toastRef.value?.addToast('Document approved', 'success')
+  await fetchData(document.value.document_id)
   const next = nextDocId.value
   if (next) {
     setTimeout(() => navigateTo(next), 1200)
   } else {
     toastRef.value?.addToast('All documents in this batch have been approved', 'success')
   }
-  fetchData(document.value.document_id)
 }
 
 function onSaved() {
