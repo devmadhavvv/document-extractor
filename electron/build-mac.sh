@@ -72,11 +72,22 @@ echo "Verifying binary..."
 ls -lh dist/backend/onboarding-api
 file dist/backend/onboarding-api
 
+PUBLISH_FLAG=""
+if [ -n "${TAG_RELEASE:-}" ] || git describe --exact-match HEAD 2>/dev/null >/dev/null; then
+  PUBLISH_FLAG="--publish always"
+  echo "Tagged commit detected — will publish to GitHub Releases"
+fi
+
 echo "=== Step 4: Package Electron app for macOS ==="
 cd electron
-npm run dist -- --mac
+npm run dist -- --mac $PUBLISH_FLAG
 cd "$ROOT_DIR"
 
 echo ""
 echo "=== Done ==="
 echo "macOS DMG: electron/release/Onboarding HRMS-1.0.0.dmg"
+echo ""
+if [ -n "$PUBLISH_FLAG" ]; then
+  echo "Release published to GitHub."
+  echo "  https://github.com/devmadhavvv/document-extractor/releases"
+fi
