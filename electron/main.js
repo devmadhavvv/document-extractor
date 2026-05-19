@@ -1,8 +1,9 @@
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, dialog } = require('electron')
 const { spawn } = require('child_process')
 const path = require('path')
 const net = require('net')
 const fs = require('fs')
+const { autoUpdater } = require('electron-updater')
 
 const isPacked = app.isPackaged
 const RESOURCES_DIR = isPacked ? process.resourcesPath : path.join(__dirname, '..')
@@ -221,6 +222,68 @@ async function createWindow() {
   })
 }
 
-app.whenReady().then(createWindow)
+function setupAutoUpdater() {
+  if (!isPacked) return
+
+  autoUpdater.logger = {
+    info: (msg) => log(`[auto-updater] ${msg}`),
+    warn: (msg) => log(`[auto-updater] ${msg}`),
+    error: (msg) => log(`[auto-updater] ${msg}`),
+  }
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('checking-for-update', () => {
+    log('auto-updater: checking for update')
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    log(`auto-updater: update available v${info.version}`)
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    log('auto-updater: no update available')
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    const pct = Math.round(progress.percent)
+    if (pct % 25 === 0) log(`auto-updater: download ${pct}%`)
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    log(`auto-updater: update downloaded v${info.version}`)
+    const buttons = info.isSilent ? ['Restart Now'] : ['Restart Now', 'Later']
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) {
+      win.webContents.executeJavaScript(`
+        window.dispatchEvent(new CustomEvent('update-ready', { detail: { version: '${info.version}' } }))
+      `).catch(() => {})
+    }
+    dialog.showMessageBox({
+      type: 'info',
+      title: 'Update Ready',
+      message: `Version ${info.version} has been downloaded.`,
+      detail: 'Restart the app to apply the update.',
+      buttons,
+      defaultId: 0,
+      cancelId: 1,
+    }).then(({ response }) => {
+      if (response === 0) autoUpdater.quitAndInstall()
+    })
+  })
+
+  autoUpdater.on('error', (err) => {
+    log(`auto-updater: error ${err.message}`)
+  })
+
+  setTimeout(() => {
+    autoUpdater.checkForUpdatesAndNotify()
+  }, 10000)
+}
+
+app.whenReady().then(() => {
+  setupAutoUpdater()
+  createWindow()
+})
 
 app.on('window-all-closed', () => app.quit())
