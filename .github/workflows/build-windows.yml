@@ -16,6 +16,8 @@ jobs:
         name: Build Windows Installer
         environment: prod
         runs-on: windows-latest
+        permissions:
+            contents: write
 
         steps:
             - name: Checkout code
