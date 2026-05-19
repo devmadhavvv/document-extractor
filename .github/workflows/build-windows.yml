@@ -178,12 +178,14 @@ jobs:
                   # Create the release (ignore error if it already exists)
                   gh release create $tag --title $tag --repo $repo --latest 2>$null
 
-                  # Upload assets with --clobber to overwrite existing ones
+                  # Upload assets — replace spaces with hyphens to match latest.yml
                   Get-ChildItem -Path electron/release -Filter "*.exe" | ForEach-Object {
-                      gh release upload $tag $_.FullName --repo $repo --clobber
+                      $newname = $_.Name -replace ' ', '-'
+                      gh release upload $tag $_.FullName --repo $repo --clobber --name "$newname"
                   }
                   Get-ChildItem -Path electron/release -Filter "*.exe.blockmap" | ForEach-Object {
-                      gh release upload $tag $_.FullName --repo $repo --clobber
+                      $newname = $_.Name -replace ' ', '-'
+                      gh release upload $tag $_.FullName --repo $repo --clobber --name "$newname"
                   }
                   Get-ChildItem -Path electron/release -Filter "latest*.yml" | ForEach-Object {
                       gh release upload $tag $_.FullName --repo $repo --clobber
